@@ -78,6 +78,7 @@ Thumbs.db
 # Logs
 *.log
 logs/
+ai_agent.log
 
 # Streamlit
 .streamlit/secrets.toml
@@ -87,3 +88,5 @@ site/
 __pypackages__/
 *.sqlite3
 
+# Generated plans
+plans/*.json

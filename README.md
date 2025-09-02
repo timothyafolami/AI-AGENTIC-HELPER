@@ -97,13 +97,21 @@ print(response)
 ### Core Components
 
 ```
-├── llm_provider.py      # Groq LLM configuration
-├── agent_tools.py       # Tool definitions and Pydantic models
-├── ai_agent.py          # LangGraph agent with state management  
+├── ai_agent.py          # Shim exposing PlanningAgent (back-compat)
 ├── prompts.py           # System prompts for different modes
-├── helper.py            # Utility functions for formatting
 ├── streamlit_chat.py    # Web interface
-└── demo.py             # Command-line demo
+├── demo.py              # Command-line demo
+└── agentic_helper/      # Modular package (source of truth)
+    ├── config.py            # Env + settings
+    ├── logging_config.py    # Central Loguru setup
+    ├── models.py            # Pydantic data models
+    ├── llm.py               # Groq LLM configuration
+    ├── utils/
+    │   └── plans.py         # Format, progress, export helpers
+    ├── tools/
+    │   └── planning.py      # Tools: search, plan, save/load/list/update
+    └── agent/
+        └── planning.py      # PlanningAgent + LangGraph
 ```
 
 ### Data Models
@@ -156,17 +164,25 @@ print(response)
 
 ```
 AI-AGENTIC-HELPER/
-├── 📄 llm_provider.py       # LLM configuration
-├── 🛠️ agent_tools.py        # Tools and data models
-├── 🤖 ai_agent.py           # Main agent logic
+├── 🤖 ai_agent.py           # Agent shim (uses agentic_helper.agent)
 ├── 💬 prompts.py            # System prompts
-├── 🔧 helper.py             # Utility functions
 ├── 🌐 streamlit_chat.py     # Web interface
 ├── 🎮 demo.py               # Demo script
 ├── 📦 requirements.txt      # Dependencies
+├── 📁 agentic_helper/       # Modular package (source of truth)
+│   ├── config.py            # Settings
+│   ├── logging_config.py    # Logger
+│   ├── models.py            # Data models
+│   ├── llm.py               # Groq LLM (import as agentic_helper.llm)
+│   ├── utils/
+│   │   └── plans.py         # Plan helpers
+│   ├── tools/
+│   │   └── planning.py      # Tools
+│   └── agent/
+│       └── planning.py      # PlanningAgent
 ├── 📁 plans/                # Generated JSON plans (auto-created)
-│   ├── plan_2024-01-15_143052.json
-│   └── plan_2024-01-15_151203.json
+│   ├── plan_YYYY-MM-DD_HHMMSS.json
+│   └── ...
 └── 📖 README.md             # This file
 ```
 
@@ -182,7 +198,7 @@ def my_custom_tool(input_param: str) -> str:
     # Your implementation
     return result
 
-# Add to AGENT_TOOLS list in agent_tools.py
+# Add to AGENT_TOOLS list in agentic_helper/tools/planning.py
 ```
 
 ### Custom Prompts

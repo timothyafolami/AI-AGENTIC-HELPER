@@ -1,11 +1,14 @@
 import streamlit as st
 import json
 from pathlib import Path
-from langchain.schema import HumanMessage, AIMessage, SystemMessage
-from llm_provider import llm
+from langchain_core.messages import HumanMessage, AIMessage, SystemMessage
 from prompts import GENERAL_CHAT_PROMPT
 from ai_agent import planning_agent, get_agent_status
-from helper import format_plan_for_display, get_latest_plan, calculate_plan_progress
+from agentic_helper.utils.plans import (
+    format_plan_for_display,
+    get_latest_plan,
+    calculate_plan_progress,
+)
 
 # Page configuration
 st.set_page_config(
@@ -117,12 +120,8 @@ if prompt := st.chat_input("Type your message here..."):
             # Show thinking indicator
             with st.spinner("🤔 Planning and thinking..."):
                 # Convert messages to simple format for the agent
-                conversation_history = []
-                for msg in st.session_state.messages[1:]:  # Skip system message
-                    if isinstance(msg, HumanMessage):
-                        conversation_history.append({"role": "human", "content": msg.content})
-                    elif isinstance(msg, AIMessage):
-                        conversation_history.append({"role": "assistant", "content": msg.content})
+                # Pass actual LangChain message objects (excluding system and the current prompt)
+                conversation_history = st.session_state.messages[1:-1]
                 
                 # Get response from planning agent with timeout handling
                 import threading
