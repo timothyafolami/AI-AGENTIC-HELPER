@@ -1,0 +1,16 @@
+uv==0.8.13
+pandas==2.3.2
+numpy==2.3.2
+langchain==0.3.27
+langchain-community==0.3.27
+langchain-core==0.3.74
+langchain-openai==0.3.31
+langchain-google-genai==2.1.9
+langchain-groq==0.3.7
+langchain-tavily==0.2.11
+langgraph==0.6.6
+duckduckgo-search==6.2.13
+swarms==8.1.2
+streamlit==1.48.1
+python-dotenv==1.1.1
+loguru==0.7.3
