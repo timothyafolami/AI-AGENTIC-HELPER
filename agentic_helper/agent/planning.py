@@ -9,13 +9,15 @@ from pydantic import BaseModel
 
 from agentic_helper.logging_config import setup_logger
 from agentic_helper.llm import llm
-from agentic_helper.tools import AGENT_TOOLS
+from agentic_helper.tools import ALL_TOOLS
 from prompts import PLANNING_AGENT_PROMPT, GENERAL_CHAT_PROMPT
 from agentic_helper.utils.plans import (
     format_plan_for_display,
     get_latest_plan,
     create_plan_summary,
+    format_overdue_summary,
 )
+from agentic_helper.memory import get_checkpointer, ensure_thread_id
 
 
 logger = setup_logger()
@@ -28,6 +30,7 @@ class AgentState(BaseModel):
     current_plan: Optional[Dict[str, Any]] = None
     user_goals: Optional[str] = None
     mode: str = "chat"  # "chat" or "planning"
+    thread_id: Optional[str] = None
 
 
 class PlanningAgent:
@@ -36,7 +39,7 @@ class PlanningAgent:
     def __init__(self):
         logger.info("🚀 Initializing PlanningAgent")
         self.llm = llm
-        self.tools = AGENT_TOOLS
+        self.tools = ALL_TOOLS
         self.llm_with_tools = self.llm.bind_tools(self.tools)
         self.tool_node = ToolNode(self.tools)
 
@@ -73,7 +76,7 @@ class PlanningAgent:
             },
         )
 
-        compiled_graph = workflow.compile(debug=True)
+        compiled_graph = workflow.compile(debug=True, checkpointer=get_checkpointer())
 
         logger.info("✅ LangGraph workflow compiled successfully")
         return compiled_graph
@@ -112,9 +115,16 @@ class PlanningAgent:
             logger.info("💬 Using CHAT mode")
 
         system_message = SystemMessage(content=system_prompt)
+        # Provide thread-id hint so tools can be called with correct scope
+        thread_hint = AIMessage(
+            content=(
+                f"Thread-ID context: {state.thread_id or 'default'}\n"
+                "When using memory tools, always pass this thread_id."
+            )
+        )
         context_message = self._get_context_message(state)
 
-        full_messages = [system_message]
+        full_messages = [system_message, thread_hint]
         if context_message:
             full_messages.append(context_message)
             logger.debug("📌 Added context message")
@@ -243,17 +253,21 @@ class PlanningAgent:
         return should_plan
 
     def _get_context_message(self, state: AgentState) -> Optional[AIMessage]:
-        if state.mode != "planning":
-            return None
-
         latest_plan = get_latest_plan()
         if not latest_plan:
-            return AIMessage(
-                content="📋 No previous plans found. Ready to create your first daily plan!"
-            )
+            if state.mode == "planning":
+                return AIMessage(
+                    content="📋 No previous plans found. Ready to create your first daily plan!"
+                )
+            return None
 
         summary = create_plan_summary(latest_plan)
         formatted_plan = format_plan_for_display(latest_plan)
+        overdue = format_overdue_summary(latest_plan)
+
+        # If in chat mode and nothing overdue, avoid injecting large context
+        if state.mode != "planning" and not overdue:
+            return None
 
         context = f"""📊 **Current Plan Context:**
 
@@ -262,11 +276,13 @@ class PlanningAgent:
 **Latest Plan Details:**
 {formatted_plan}
 
+{('' if not overdue else '\n' + overdue + '\n\nReply with the task id(s) to mark complete or say \"reschedule\" with a new time.')}
+
 You can reference this plan or create a new one based on the user's request."""
 
         return AIMessage(content=context)
 
-    def chat(self, message: str, conversation_history: List = None) -> str:
+    def chat(self, message: str, conversation_history: List = None, thread_id: Optional[str] = None) -> str:
         logger.info(
             f"💬 Chat started: '{message[:50]}{'...' if len(message) > 50 else ''}'"
         )
@@ -288,10 +304,17 @@ You can reference this plan or create a new one based on the user's request."""
             messages.append(HumanMessage(content=message))
 
             initial_state = AgentState(
-                messages=messages, current_plan=get_latest_plan(), mode="chat"
+                messages=messages,
+                current_plan=get_latest_plan(),
+                mode="chat",
+                thread_id=ensure_thread_id(thread_id),
             )
 
-            config = {"recursion_limit": 10, "max_iterations": 5}
+            config = {
+                "recursion_limit": 10,
+                "max_iterations": 5,
+                "configurable": {"thread_id": ensure_thread_id(thread_id)},
+            }
             logger.info(f"⚙️  Running graph with config: {config}")
             result = self.graph.invoke(initial_state, config)
 
@@ -345,4 +368,3 @@ You can reference this plan or create a new one based on the user's request."""
             tool_descriptions.append(f"🔧 **{name}**: {description}")
 
         return "🛠️ **Available Tools:**\n\n" + "\n".join(tool_descriptions)
-

@@ -145,9 +145,8 @@ def create_daily_plan(user_input: str) -> str:
             logger.info("✅ LLM successfully generated plan structure")
 
             if response.daily_plan:
-                response.daily_plan.plan_id = (
-                    f"plan_{datetime.now().strftime('%Y%m%d_%H%M%S')}_{uuid.uuid4().hex[:6]}"
-                )
+                # Use stable plan_id per date for updates
+                response.daily_plan.plan_id = f"plan_{time_info['current_date']}"
                 response.daily_plan.created_at = datetime.now().isoformat()
                 response.daily_plan.current_time = time_info["current_time"]
 
@@ -193,15 +192,17 @@ def create_daily_plan(user_input: str) -> str:
         return f"❌ Error creating daily plan: {str(e)}"
 
 
+def _canonical_plan_path(plan_date: str) -> Path:
+    plans_dir = Path("plans")
+    plans_dir.mkdir(exist_ok=True)
+    return plans_dir / f"plan_{plan_date}.json"
+
+
 @tool
 def save_daily_plan(plan: DailyPlan) -> str:
     """Save a daily plan to JSON file"""
     try:
-        plans_dir = Path("plans")
-        plans_dir.mkdir(exist_ok=True)
-
-        filename = f"plan_{plan.date}_{datetime.now().strftime('%H%M%S')}.json"
-        filepath = plans_dir / filename
+        filepath = _canonical_plan_path(plan.date)
 
         plan_dict = plan.model_dump()
 
@@ -213,6 +214,7 @@ def save_daily_plan(plan: DailyPlan) -> str:
             plan_dict["estimated_total_duration"] = sum(
                 int(t.get("estimated_duration", 0)) for t in plan_dict.get("tasks", [])
             )
+        plan_dict["updated_at"] = datetime.now().isoformat()
 
         with open(filepath, "w") as f:
             json.dump(plan_dict, f, indent=2)
@@ -293,6 +295,86 @@ def update_task_status(plan_file: str, task_id: str, new_status: str) -> str:
         return f"❌ Error updating task status: {str(e)}"
 
 
+def _latest_plan_path() -> Path | None:
+    plans_dir = Path("plans")
+    if not plans_dir.exists():
+        return None
+    files = list(plans_dir.glob("plan_*.json"))
+    if not files:
+        return None
+    # Prefer canonical files (without time suffix); fallback to most recent mtime
+    canon = sorted([p for p in files if len(p.stem) == len("plan_YYYY-MM-DD")], reverse=True)
+    if canon:
+        return canon[0]
+    return max(files, key=lambda p: p.stat().st_mtime)
+
+
+@tool
+def update_task_status_latest(task_id: str, new_status: str) -> str:
+    """Update a task's status in the latest plan without specifying the file path."""
+    path = _latest_plan_path()
+    if not path:
+        return "❌ No plans found. Create a plan first."
+    return update_task_status.invoke({"plan_file": str(path), "task_id": task_id, "new_status": new_status})
+
+
+def _validate_time_str(s: str) -> bool:
+    try:
+        datetime.strptime(s, "%H:%M")
+        return True
+    except Exception:
+        return False
+
+
+@tool
+def reschedule_task(plan_file: str, task_id: str, new_time: str) -> str:
+    """Reschedule a task to a new HH:MM time in a given plan file."""
+    if not _validate_time_str(new_time):
+        return "❌ Invalid time format. Use HH:MM (24h)."
+    try:
+        with open(plan_file, "r") as f:
+            plan_data = json.load(f)
+        for task in plan_data.get("tasks", []):
+            if task.get("id") == task_id:
+                task["scheduled_time"] = new_time
+                break
+        else:
+            return f"❌ Task with ID '{task_id}' not found"
+        with open(plan_file, "w") as f:
+            json.dump(plan_data, f, indent=2)
+        return f"✅ Task '{task_id}' rescheduled to {new_time}"
+    except Exception as e:
+        return f"❌ Error rescheduling task: {str(e)}"
+
+
+@tool
+def reschedule_task_latest(task_id: str, new_time: str) -> str:
+    """Reschedule a task in the latest plan without specifying file path."""
+    path = _latest_plan_path()
+    if not path:
+        return "❌ No plans found. Create a plan first."
+    return reschedule_task.invoke({"plan_file": str(path), "task_id": task_id, "new_time": new_time})
+
+
+@tool
+def get_overdue_tasks() -> str:
+    """Return a summary of overdue tasks from the latest plan."""
+    path = _latest_plan_path()
+    if not path:
+        return "No plans found."
+    try:
+        with open(path, "r") as f:
+            plan = json.load(f)
+        from agentic_helper.utils.plans import format_overdue_summary
+
+        summary = format_overdue_summary(plan)
+        if not summary:
+            return "No overdue tasks."
+        return summary + f"\n\nLatest plan file: {path.name}"
+    except Exception as e:
+        return f"❌ Error checking overdue tasks: {str(e)}"
+
+
 AGENT_TOOLS = [
     search_web,
     get_current_time_info,
@@ -301,5 +383,8 @@ AGENT_TOOLS = [
     load_daily_plan,
     list_saved_plans,
     update_task_status,
+    update_task_status_latest,
+    reschedule_task,
+    reschedule_task_latest,
+    get_overdue_tasks,
 ]
-

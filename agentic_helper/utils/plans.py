@@ -1,5 +1,5 @@
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from pathlib import Path
 from typing import Dict, Any, List, Optional
 
@@ -59,10 +59,18 @@ def get_latest_plan() -> Optional[Dict[str, Any]]:
         if not plan_files:
             return None
 
-        latest_file = max(plan_files, key=lambda x: x.stat().st_mtime)
-
-        with open(latest_file, "r") as f:
-            return json.load(f)
+        # Prefer most recent non-demo plan if present
+        for pf in sorted(plan_files, key=lambda x: x.stat().st_mtime, reverse=True):
+            try:
+                with open(pf, "r") as f:
+                    data = json.load(f)
+                notes = (data.get("planning_notes") or "").lower()
+                if data.get("plan_id") == "plan_smoke_test" or "storage smoke test" in notes:
+                    continue
+                return data
+            except Exception:
+                continue
+        return None
     except Exception:
         return None
 
@@ -171,3 +179,52 @@ def export_plan_to_markdown(plan_data: Dict[str, Any]) -> str:
     except Exception as e:
         return f"Error creating markdown: {str(e)}"
 
+
+def find_overdue_tasks(plan_data: Dict[str, Any]) -> List[Dict[str, Any]]:
+    """Return tasks whose scheduled time has passed and are not completed.
+
+    A task is overdue if scheduled_time <= now (on plan's date) and status in
+    {'pending','in_progress'}.
+    """
+    try:
+        if not plan_data:
+            return []
+        date_str = plan_data.get("date")
+        if not date_str:
+            return []
+        now = datetime.now()
+        overdue: List[Dict[str, Any]] = []
+        for t in plan_data.get("tasks", []):
+            status = t.get("status", "pending")
+            if status == "completed":
+                continue
+            time_str = t.get("scheduled_time")
+            if not time_str or not validate_time_format(time_str):
+                continue
+            try:
+                scheduled_dt = datetime.strptime(f"{date_str} {time_str}", "%Y-%m-%d %H:%M")
+            except Exception:
+                continue
+            if scheduled_dt <= now:
+                overdue.append(t)
+        return overdue
+    except Exception:
+        return []
+
+
+def format_overdue_summary(plan_data: Dict[str, Any]) -> str:
+    """Produce a short human-readable summary of overdue tasks."""
+    overdue = find_overdue_tasks(plan_data)
+    if not overdue:
+        return ""
+    lines = [
+        f"⏰ You have {len(overdue)} overdue task(s).",
+        "Consider marking completed or rescheduling:",
+    ]
+    for t in overdue[:5]:
+        lines.append(
+            f"- {t.get('title','Untitled')} at {t.get('scheduled_time','TBD')} (id: {t.get('id')})"
+        )
+    if len(overdue) > 5:
+        lines.append(f"...and {len(overdue)-5} more.")
+    return "\n".join(lines)

@@ -10,6 +10,26 @@ Provides modular components for the AI planning assistant:
 - agent: Planning agent built on LangGraph
 """
 
+import warnings
+
+# Suppress noisy deprecation warnings from Pydantic v2 triggered by LangChain tools
+try:
+    from pydantic.warnings import PydanticDeprecatedSince20
+
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*`__fields__` attribute is deprecated.*",
+        category=PydanticDeprecatedSince20,
+        module=r"langchain_core.tools.base",
+    )
+except Exception:
+    # Fallback: best-effort suppression by message if category import fails
+    warnings.filterwarnings(
+        "ignore",
+        message=r".*`__fields__` attribute is deprecated.*",
+        module=r"langchain_core.tools.base",
+    )
+
 __all__ = [
     "config",
     "logging_config",
@@ -19,4 +39,3 @@ __all__ = [
     "tools",
     "agent",
 ]
-

@@ -10,23 +10,32 @@ A sophisticated AI-powered daily planning and task management assistant built wi
 - **Structured Output**: Plans saved as JSON with detailed task information
 - **Real-time Progress Tracking**: Monitor task completion and time estimates
 - **Web Search Integration**: Get current information to enhance planning
+- **Overdue Awareness**: Detect tasks whose scheduled time has passed and propose actions
+- **Long/Short-Term Memory**: Conversation memory via LangGraph checkpointing + long‑term memory store
 - **Tool-based Architecture**: Extensible with multiple specialized tools
 
 ### 🛠️ **Available Tools**
-- **`create_daily_plan`**: Generate structured daily plans with AI reasoning
-- **`search_web`**: DuckDuckGo web search for current information
-- **`get_current_time_info`**: Smart time/date context for scheduling
-- **`save_daily_plan`**: Store plans as JSON files
-- **`load_daily_plan`**: Retrieve saved plans
-- **`list_saved_plans`**: View all created plans
-- **`update_task_status`**: Mark tasks as completed/in progress
+- Planning & Plans
+  - `create_daily_plan`: Generate structured daily plans with AI reasoning (saved as `plans/plan_<YYYY-MM-DD>.json`)
+  - `get_current_time_info`: Smart time/date context for scheduling
+  - `save_daily_plan`, `load_daily_plan`, `list_saved_plans`
+  - `update_task_status`, `update_task_status_latest`
+  - `reschedule_task`, `reschedule_task_latest`
+  - `get_overdue_tasks`: Summarize overdue tasks from the latest plan
+- Search
+  - `search_web`: DuckDuckGo web search for current information
+- Long‑term Memory
+  - `save_memory(thread_id, content, tags?, importance?)`
+  - `list_memories(thread_id, limit?)`
+  - `search_memory(thread_id, query, limit?)`
+  - `delete_memory(thread_id, memory_id)`
 
 ### 🎨 **User Interface**
 - **Modern Streamlit Interface**: Clean, responsive web app
-- **Sidebar Plan Viewer**: Real-time plan display with progress metrics
+- **Sidebar Plan Viewer**: Shows only today's plan (`plans/plan_<date>.json`); empty if none
 - **Interactive Chat**: Full conversation history with the AI agent
+- **Quick Actions**: Buttons post a user message and immediately render one assistant reply
 - **Progress Visualization**: Progress bars and completion statistics
-- **Quick Actions**: One-click plan creation and summary viewing
 
 ## 🚀 Quick Start
 
@@ -106,10 +115,13 @@ print(response)
     ├── logging_config.py    # Central Loguru setup
     ├── models.py            # Pydantic data models
     ├── llm.py               # Groq LLM configuration
+    ├── memory.py            # LangGraph checkpointer (SQLite/Memory)
+    ├── memory_store.py      # Long‑term memory store (SQLite)
     ├── utils/
     │   └── plans.py         # Format, progress, export helpers
     ├── tools/
-    │   └── planning.py      # Tools: search, plan, save/load/list/update
+    │   ├── planning.py      # Planning + plan management tools
+    │   └── memory_tools.py  # Long‑term memory tools
     └── agent/
         └── planning.py      # PlanningAgent + LangGraph
 ```
@@ -148,12 +160,14 @@ print(response)
 3. **Context Gathering**: Get time info and existing plans
 4. **AI Reasoning**: Use LLM with structured output for planning
 5. **Response Generation**: Format and return user-friendly response
+6. **Memory**: Persist conversation state via checkpointer; optional long‑term memory via tools
 
 ## 🔧 Configuration
 
 ### Environment Variables
 - `GROQ_API_KEY`: Your Groq API key (required)
 - `MODEL_NAME`: Groq model to use (default: llama-3.1-70b-versatile)
+ - `THREAD_ID` (CLI only, optional): Set to persist a named conversation thread
 
 ### Supported Models
 - `llama-3.1-405b-reasoning` (recommended for complex planning)
@@ -167,22 +181,26 @@ AI-AGENTIC-HELPER/
 ├── 🤖 ai_agent.py           # Agent shim (uses agentic_helper.agent)
 ├── 💬 prompts.py            # System prompts
 ├── 🌐 streamlit_chat.py     # Web interface
-├── 🎮 demo.py               # Demo script
+├── 🎮 demo.py               # Demo script (uses THREAD_ID)
+├── 📜 scripts/storage_smoke.py # Plan storage sanity check
 ├── 📦 requirements.txt      # Dependencies
 ├── 📁 agentic_helper/       # Modular package (source of truth)
 │   ├── config.py            # Settings
 │   ├── logging_config.py    # Logger
 │   ├── models.py            # Data models
-│   ├── llm.py               # Groq LLM (import as agentic_helper.llm)
+│   ├── llm.py               # Groq LLM
+│   ├── memory.py            # LangGraph checkpointer
+│   ├── memory_store.py      # Long‑term memory (SQLite)
 │   ├── utils/
 │   │   └── plans.py         # Plan helpers
 │   ├── tools/
-│   │   └── planning.py      # Tools
+│   │   ├── planning.py      # Plan tools
+│   │   └── memory_tools.py  # Memory tools
 │   └── agent/
 │       └── planning.py      # PlanningAgent
 ├── 📁 plans/                # Generated JSON plans (auto-created)
-│   ├── plan_YYYY-MM-DD_HHMMSS.json
-│   └── ...
+│   ├── plan_<YYYY-MM-DD>.json   # Canonical daily file
+│   └── plan_<legacy>.json       # Older timestamped files (still supported)
 └── 📖 README.md             # This file
 ```
 
@@ -210,7 +228,8 @@ Edit `prompts.py` to customize how the agent behaves:
 ### UI Modifications
 Customize `streamlit_chat.py` to modify the web interface:
 - Change colors, layout, or components
-- Add new sidebar features
+- Sidebar “Current Plan” reads only today's canonical plan file
+- Quick actions call the agent directly (user message first, one assistant reply)
 - Modify chat display format
 
 ## 🔍 Troubleshooting
@@ -232,6 +251,13 @@ Customize `streamlit_chat.py` to modify the web interface:
 **❌ "Agent not responding"**
 - Check your internet connection for web search tools
 - Verify Groq API quota and rate limits
+ - If using Streamlit, ensure the first assistant reply isn’t being suppressed by reruns; quick actions now post a user message and immediately process a single reply.
+
+**ℹ️ "Demo plan showing in sidebar"**
+- If you ran the storage smoke test, a demo plan may exist. The UI now filters it out, but you can delete the file (`plans/plan_<date>.json`) if desired.
+
+**ℹ️ Pydantic deprecation warnings**
+- We suppress the noisy `__fields__` Pydantic v2 deprecation warnings from LangChain tool introspection.
 
 ### Debug Mode
 Enable debug output:

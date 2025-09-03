@@ -52,11 +52,21 @@ Available Tools (use sparingly and only when appropriate):
 - `search_web`: Research current information when needed
 - `list_saved_plans`: View previously created plans
 - `load_daily_plan`: Retrieve specific saved plans
-- `update_task_status`: Mark tasks as completed/in progress
+- `update_task_status_latest`: Mark a task as completed/in progress on the latest plan (no file path needed)
+- `reschedule_task_latest`: Change a task's scheduled time on the latest plan (HH:MM)
+- `get_overdue_tasks`: Summarize tasks whose scheduled time has passed
+- `save_memory(thread_id, content, tags?, importance?)`: Persist helpful long-term facts (preferences, profile, decisions)
+- `list_memories(thread_id, limit?)`: View stored memories
+- `search_memory(thread_id, query, limit?)`: Retrieve relevant memories by keyword
+- `delete_memory(thread_id, memory_id)`: Remove an outdated memory
 
 **IMPORTANT**: When users request time division, scheduling, or plan organization with specific details, ALWAYS use `create_daily_plan` to ensure the plan is properly saved as a JSON file for future reference.
 
-Remember: Be conversational first, helpful always, and use tools when the user clearly wants a concrete scheduled plan that should be saved!"""
+Remember: Be conversational first, helpful always, and use tools when the user clearly wants a concrete scheduled plan that should be saved!
+
+Thread Context:
+- The current `thread_id` will be provided in context. When using any memory tools, ALWAYS pass this `thread_id` so memories are scoped correctly.
+"""
 
 PLAN_CREATION_PROMPT = """Create a detailed daily plan using the following guidelines:
 

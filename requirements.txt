@@ -9,8 +9,9 @@ langchain-google-genai==2.1.9
 langchain-groq==0.3.7
 langchain-tavily==0.2.11
 langgraph==0.6.6
-duckduckgo-search==6.2.13
+duckduckgo-search==8.1.1
 swarms==8.1.2
 streamlit==1.48.1
 python-dotenv==1.1.1
 loguru==0.7.3
+watchdog==6.0.0
